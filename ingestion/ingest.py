@@ -1,5 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
+import json
+from sentence_transformers import SentenceTransformer
+from database_connection import get_connection
 
 url = "https://learn.microsoft.com/en-us/power-bi/guidance/star-schema"
 
@@ -90,10 +93,13 @@ for heading in headings:
 #     count += 1
 
 # ----------------------------------------------------------------------------
+#                   Store extracted content in sections
+# ----------------------------------------------------------------------------
 headings = article.find_all(["h2","h3"])
 sections = []
+unhandled_tags = set()
 count = 1
-print(headings)
+# print(headings)
 for heading in headings:
     # print("Heading #", count, " : " , heading.get_text(strip=True))
     # print()
@@ -109,18 +115,18 @@ for heading in headings:
         if heading_description.name in ["h2", "h3"]:
             break
 
-        print("ALL TAG : " , heading_description.name)
+        # print("ALL TAG : " , heading_description.name)
         print()
         image = heading_description.find("img")
         if image:
-            # print("image src: " , image.get("src"))
-            # print("image alt: ", image.get("alt"))
-            # print()
+            print("image src: " , image.get("src"))
+            print("image alt: ", image.get("alt"))
+            print()
             section["Content"].append(image.get("src"))
         elif heading_description.name == "p":
-            # print("Paragraph : ")
-            # print(heading_description.getText(" ", strip=True))
-            # print()
+            print("Paragraph : ")
+            print(heading_description.getText(" ", strip=True))
+            print()
             section["Content"].append(heading_description.getText(" ", strip=True))
         elif heading_description.name == "ul":
             print("Bulletpoint : ")
@@ -134,15 +140,118 @@ for heading in headings:
             print()
             section["Content"].append(bullet_text)
         else: 
-            print("Unhadled HTML Tag : ")
-            print(heading_description.name)
+            # print("Unhadled HTML Tag : ")
+            if heading_description.name == "div":
+                print("\nUNHANDLE DIV:")
+                print(heading_description.prettify())
+            else:
+                unhandled_tags.add(heading_description.name)
+            
 
     sections.append(section)
-        
 
     count += 1
 
     print("-----------------------------")
 
-    print(sections)
-        # print("Heading description : " , heading_description.get_text(strip=True))
+print(sections)
+print(json.dumps(sections, indent=4, ensure_ascii=False))
+print("--------------------------------")
+print("Unhandle TAGS : " , unhandled_tags)
+
+#------------------------------------------------------------------------------------
+#                       Conbine the content of each section
+#------------------------------------------------------------------------------------
+print()
+for section in sections:
+    heading = section["Heading"]
+    print("Heading : " , heading)
+    full_contents = "\n".join(section["Content"])
+    print("Full Contents : " , full_contents)
+    print("---------------------------------------")
+
+#------------------------------------------------------------------------------------
+#               Split long sections into smaller chunks
+#      Example:
+#      heading 1 - Chunk 1 (100 words), Chunk 2 (100 words), Chank 3 (50 words)
+#      heading 2 - Chunk 1(100 words), Chunk 2 (20 words)
+#------------------------------------------------------------------------------------
+
+def create_chunks(text, max_words = 100):
+    words = text.split()
+    chunk = []
+
+    for i in range(0,len(words), max_words):
+        chunk_words = words[i:i + max_words]
+        chunk_text = " ".join(chunk_words)
+        chunk.append(chunk_text)
+
+    return chunk
+
+all_chunks = []
+for section in sections:
+    heading = section["Heading"]
+    full_contents = "\n".join(section["Content"])
+
+    chunks = create_chunks(full_contents,100)
+
+    for index, chunks_text in enumerate(chunks):
+        chunk_data = {
+            "section_heading" : heading,
+            "chunk_index" : len(all_chunks),
+            "content" : chunks_text
+        }
+        all_chunks.append(chunk_data)
+
+for chunk in all_chunks:
+    print("Section : " , chunk["section_heading"])
+    print("Chunk Index : " , chunk["chunk_index"])
+    print("Content : " , chunk["content"])
+    print("------------------------------------")
+
+#------------------------------------------------------------------------------------
+#           Generate Embeddings for all the documation chunks
+#------------------------------------------------------------------------------------
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+for chunk in all_chunks:
+    heading = chunk["section_heading"]
+    content = chunk["content"]
+
+    # Combine heading and content before embedding
+    text_to_embed = heading + "\n" + content
+
+    embedding = model.encode(text_to_embed)
+    chunk["embedding"] = embedding.tolist()
+    print(chunk["embedding"])
+
+print("Total chunks:" , len(all_chunks))
+print("First Embedding Dimentions: ", len(all_chunks[0]["embedding"]))
+
+#------------------------------------------------------------------------------------
+#       Save the Chunk into PostgreSQL
+#------------------------------------------------------------------------------------
+document_id = 1
+with get_connection() as conn:
+    with conn.cursor() as cursor:
+        for chunk in all_chunks:
+            cursor.execute(
+                """
+                INSERT INTO document_chunks
+                    (document_id, section_heading, chunk_index, content, embedding)
+                VALUES(%s, %s, %s, %s, %s)
+                ON CONFLICT(document_id, chunk_index)
+                DO UPDATE SET
+                    section_heading = EXCLUDED.section_heading,
+                    content = EXCLUDED.content,
+                    embedding = EXCLUDED.embedding
+                """,
+                (
+                    document_id,
+                    chunk["section_heading"],
+                    chunk["chunk_index"],
+                    chunk["content"],
+                    chunk["embedding"]
+                )
+            )
+print("Successfully saved : ", len(all_chunks), " chunks")
