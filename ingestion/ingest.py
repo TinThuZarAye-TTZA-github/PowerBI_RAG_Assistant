@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import json
 from sentence_transformers import SentenceTransformer
 from database_connection import get_connection
+import re
 
 url = "https://learn.microsoft.com/en-us/power-bi/guidance/star-schema"
 
@@ -178,16 +179,27 @@ for section in sections:
 #------------------------------------------------------------------------------------
 
 def create_chunks(text, max_words = 100):
-    words = text.split()
-    chunk = []
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+ 
+    chunks = []
+    current_chunk = []
+    current_word_count = 0
 
-    for i in range(0,len(words), max_words):
-        chunk_words = words[i:i + max_words]
-        chunk_text = " ".join(chunk_words)
-        chunk.append(chunk_text)
+    for sentence in sentences:
+        sentence_word_count = len(sentence.split())
 
-    return chunk
+        if current_chunk and current_word_count + sentence_word_count > max_words:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = []
+            current_word_count = 0
 
+        current_chunk.append(sentence)
+        current_word_count += sentence_word_count
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    return chunks
+
+    
 all_chunks = []
 for section in sections:
     heading = section["Heading"]
