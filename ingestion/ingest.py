@@ -4,6 +4,7 @@ import json
 from sentence_transformers import SentenceTransformer
 from database_connection import get_connection
 import re
+from urllib.parse import urljoin
 
 url = "https://learn.microsoft.com/en-us/power-bi/guidance/star-schema"
 
@@ -267,3 +268,19 @@ with get_connection() as conn:
                 )
             )
 print("Successfully saved : ", len(all_chunks), " chunks")
+
+
+#------------------------------------------------------------------------------------
+#           Getting the image URL
+#------------------------------------------------------------------------------------
+for img in article.find_all("img"):
+    src = img.get("src")
+
+    if not src:
+        continue
+
+    image_url = urljoin(url, src)
+    description = img.get("alt", "")
+
+    print("Image : ", image_url)
+    print("Description : " , description)
