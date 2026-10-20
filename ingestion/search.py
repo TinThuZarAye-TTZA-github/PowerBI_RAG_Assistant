@@ -35,12 +35,17 @@ while True:
                 cursor.execute(
                 """
                 SELECT 
-                    section_heading, 
-                    content, 
-                    embedding <=> %s AS distance
-                FROM document_chunks
-                ORDER BY embedding <=> %s
-                LIMIT 10;
+                    d.title, 
+                    d.source_url,
+                    dc.section_heading,
+                    dc.content, 
+                    dc.embedding <=> %s AS distance
+                FROM document_chunks dc
+                JOIN documents d
+                    ON dc.document_id = d.id
+                WHERE dc.embedding IS NOT NULL
+                ORDER BY dc.embedding <=> %s 
+                LIMIT 10
                 """,
                 (question_embedding, question_embedding)
                 
@@ -51,7 +56,7 @@ while True:
         # Prepare question-document pairs for reranking
         pairs = []
 
-        for heading, content, distance in results:
+        for title, source_url, heading, content, distance in results:
             pairs.append((question, heading + "\n" + content))
 
         #calculating the ranking score using CrossEncoder
@@ -61,9 +66,11 @@ while True:
             scores = reranker.predict(pairs)
 
             for result, score in zip(results, scores):
-                heading, content, distance = result
+                title, source_url, heading, content, distance = result
 
-                ranked_result.append((heading, content, distance, float(score)))
+    
+
+                ranked_result.append((title, source_url, heading, content, distance, float(score)))
 
         #Sort by ranking score highest to lowest
         ranked_result.sort(key=lambda item: item[3], reverse=True)
@@ -73,7 +80,9 @@ while True:
 
 
         #Display result
-        for heading, content, distance, score in top_results:
+        for title, source_url, heading, content, distance, score in top_results:
+            print("\nTitle : ", title)
+            print("\nSource_url : ", source_url )
             print("\nSection : ", heading)
             print("Content : ", content)
             print("Distance : ", distance)
