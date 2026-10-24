@@ -58,6 +58,7 @@ while True:
 
         for title, source_url, heading, content, distance in results:
             pairs.append((question, heading + "\n" + content))
+            
 
         #calculating the ranking score using CrossEncoder
         ranked_result = []
@@ -73,7 +74,7 @@ while True:
                 ranked_result.append((title, source_url, heading, content, distance, float(score)))
 
         #Sort by ranking score highest to lowest
-        ranked_result.sort(key=lambda item: item[3], reverse=True)
+        ranked_result.sort(key=lambda item: item[5], reverse=True)
 
         #Select the top 3 chunks
         top_results = ranked_result[:3]
@@ -81,9 +82,13 @@ while True:
 
         #Display result
         for title, source_url, heading, content, distance, score in top_results:
+            print("-------------------------------------->")
             print("\nTitle : ", title)
             print("\nSource_url : ", source_url )
             print("\nSection : ", heading)
             print("Content : ", content)
             print("Distance : ", distance)
             print("Score : ", score)
+
+    print("---------------------------------------------")
+    print("---------------------------------------------")

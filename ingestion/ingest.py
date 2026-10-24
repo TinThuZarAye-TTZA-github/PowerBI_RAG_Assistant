@@ -130,7 +130,11 @@ def ingest_document(url):
                 print("image src: " , image.get("src"))
                 print("image alt: ", image.get("alt"))
                 print()
-                section["Content"].append(image.get("src"))
+                image_url = urljoin(url, image.get("src"))
+                section.setdefault("Images", []).append({
+                    "url": image_url,
+                    "description" : image.get("alt","")
+                })
             elif heading_description.name == "p":
                 print("Paragraph : ")
                 print(heading_description.getText(" ", strip=True))
@@ -179,31 +183,40 @@ def ingest_document(url):
         print("---------------------------------------")
 
     #------------------------------------------------------------------------------------
-    #               Split long sections into smaller chunks
+    #               Split long sections into smaller, paragraph chunks
+    #      - Target a maximum of 200 words per chunk
+    #      - Keep complete paragraph together 
+    #      - Preserve paragraph boundaries using "\n\n"
     #      Example:
-    #      heading 1 - Chunk 1 (100 words), Chunk 2 (100 words), Chank 3 (50 words)
-    #      heading 2 - Chunk 1(100 words), Chunk 2 (20 words)
+    #      heading 1 - Chunk 1 (~ 180 words), Chunk 2 (~ 200 words), Chank 3 (~ 50 words)
+    #      heading 2 - Chunk 1(~200 words), Chunk 2 (~20 words)
+    #      A single paragraph may exceed 200 words
     #------------------------------------------------------------------------------------
 
-    def create_chunks(text, max_words = 100):
-        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    def create_chunks(text, max_words = 200):
+        # sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        paragraphs = [
+            paragraph.strip()
+            for paragraph in text.split("\n")
+            if(paragraph.strip())
+        ]
     
         chunks = []
         current_chunk = []
         current_word_count = 0
 
-        for sentence in sentences:
-            sentence_word_count = len(sentence.split())
+        for paragraph in paragraphs:
+            paragraph_word_count = len(paragraph.split())
 
-            if current_chunk and current_word_count + sentence_word_count > max_words:
-                chunks.append(" ".join(current_chunk))
+            if current_chunk and current_word_count + paragraph_word_count > max_words:
+                chunks.append("\n\n".join(current_chunk))
                 current_chunk = []
                 current_word_count = 0
 
-            current_chunk.append(sentence)
-            current_word_count += sentence_word_count
+            current_chunk.append(paragraph)
+            current_word_count += paragraph_word_count
         if current_chunk:
-            chunks.append(" ".join(current_chunk))
+            chunks.append("\n\n".join(current_chunk))
         return chunks
 
         
